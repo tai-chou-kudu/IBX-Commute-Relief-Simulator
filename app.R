@@ -175,8 +175,12 @@ server <- function(input, output, session) {
       pal <- colorNumeric("Blues", domain = var_data, na.color = "transparent")
     } else if (selected_var %in% c("ibx_commute_relief_rf", "ibx_commute_relief_rf_spatial")) {
       pal <- colorNumeric("viridis", domain = var_data, reverse = TRUE, na.color = "transparent")
-    } else if (selected_var %in% c("rf_residual", "bart_ite", "bart_ite_treated_only")) {
+    } else if (selected_var == "rf_residual") {
+      # Diverging palette is correct for residuals -- 0 = perfect prediction
       pal <- colorNumeric("RdBu", domain = var_data, na.color = "transparent")
+    } else if (selected_var %in% c("bart_ite", "bart_ite_treated_only")) {
+      # Sequential palette for causal estimates -- midpoint isn't meaningful
+      pal <- colorNumeric("viridis", domain = var_data, reverse = TRUE, na.color = "transparent")
     } else if (selected_var %in% c("ibx_commute_relief", "ibx_commute_relief_lm_spatial")) {
       pal <- colorNumeric("YlGn", domain = var_data, na.color = "transparent")
     } else if (selected_var %in% c("predicted_commute_baseline_spline", "predicted_commute_ibx_spline",
@@ -186,12 +190,26 @@ server <- function(input, output, session) {
       pal <- colorNumeric("Oranges", domain = var_data, na.color = "transparent")
     } else if (selected_var == "dist_subway_miles") {
       pal <- colorNumeric("viridis", domain = var_data, reverse = TRUE, na.color = "transparent")
+    } else if (selected_var %in% c("uber_trips_per_capita", "bike_trips_per_capita",
+                                        "stations_per_sq_mile", "stations_per_1000_pop",
+                                        "pop_density")) {
+      # Heavy-tailed variables: cap at 98th percentile so outliers don't
+      # wash out all variation in the color scale.
+      cap_val <- quantile(var_data, 0.98, na.rm = TRUE)
+      capped  <- pmin(var_data, cap_val)
+      pal <- colorNumeric("magma", domain = c(0, cap_val), na.color = "transparent")
     } else {
       pal <- colorNumeric("magma", domain = var_data, na.color = "transparent")
     }
     
-    # SAFETY GATE 3: Final check before rounding/drawing
-    # Rounding only happens inside the labels to prevent data corruption
+    # SAFETY GATE 3: Cap heavy-tailed vars so outliers don't wash out the scale.
+    var_data_raw <- var_data
+    if (selected_var %in% c("uber_trips_per_capita", "bike_trips_per_capita",
+                            "stations_per_sq_mile", "stations_per_1000_pop",
+                            "pop_density")) {
+      var_data <- pmin(var_data, quantile(var_data, 0.98, na.rm = TRUE))
+    }
+
     leafletProxy("nyc_map", data = map_data) %>%
       clearShapes() %>%
       clearControls() %>%
@@ -200,7 +218,7 @@ server <- function(input, output, session) {
         fillOpacity = 0.7,
         color = "white",
         weight = 0.5,
-        label = ~paste0(legend_titles[[selected_var]], ": ", prefix_symbol, round(as.numeric(var_data), 1), suffix_symbol), 
+        label = ~paste0(legend_titles[[selected_var]], ": ", prefix_symbol, round(as.numeric(var_data_raw), 1), suffix_symbol), 
         highlightOptions = highlightOptions(weight = 2, color = "#666", bringToFront = TRUE)
       ) %>%
       addLegend(

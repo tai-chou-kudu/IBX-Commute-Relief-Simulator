@@ -1,120 +1,79 @@
-# NYC IBX Commute Relief Estimator
+# Modeling the Impact of the Interborough Express on NYC Commute Times
 
-**Predicting neighborhood-level commute impact of the Interborough Express, before it's built**
+**Tai Chou-Kudu** | DATA 622, Winter 2026
+Originally developed with Catherine Dube and Guillermo Schneider.
 
-*Catherine Dube, Guillermo Schneider, Tai Chou-Kudu | DATA 622 Machine Learning | CUNY School of Professional Studies | Spring 2026*
+## What This Project Does
 
----
+This project estimates how the proposed [Interborough Express (IBX)](https://new.mta.info/project/interborough-express) subway line would change commute times for the Brooklyn and Queens neighborhoods it would serve. We combine Census demographics, TLC taxi/rideshare data, Citi Bike trip data, and MTA subway station locations to build predictive and causal models of long commutes (60+ minutes) at the census tract level across NYC.
 
-Live App Link:  https://n6yc1z-tai0chou0kudu.shinyapps.io/IBX-Commute-Relief-Estimator/
+The core question: if you drop a new subway line into underserved parts of Brooklyn and Queens, how much does it actually move the needle on commute times?
 
+## My Contributions
 
-## The Problem
+This was a three-person group project. Here is what I built:
 
-Outside of Manhattan, New York's boroughs have some of the longest commute times in the country. In some outer borough neighborhoods, average commutes run as high as 53 minutes. The subway was built to move people in and out of Manhattan, not across Brooklyn and Queens. There is no fast crosstown connection between the two boroughs.
+**Random Forest model pipeline** -- This was the main modeling contribution I made. I built the full RF pipeline from scratch on a feature branch (`tai/random-forest-model`), including training and evaluation, the IBX simulation with RF predictions, integration of borough fixed effects, a residuals map layer for the Shiny app, clamping so predicted percentages stay in [0, 100], and a fix for a GEOID factor-level bug that was breaking both the RF and linear models.
 
-The MTA's proposed **Interborough Express (IBX)** is meant to change that. The IBX would run along an existing 14-mile freight corridor from Bay Ridge, Brooklyn to Jackson Heights, Queens, with 19 stations serving neighborhoods that the MTA describes as historically underserved by rapid transit. Close to 900,000 residents live along the proposed route, nearly three-quarters of whom are people of color.
+**Shiny app visualization** -- I built the RF-specific map layers in the Shiny app: viridis colorscale (colorblind-friendly), separate palettes for predictions vs. relief vs. residuals (Blues / viridis / RdBu), and iterated on those until they were easy to read.
 
-The question this project tries to answer: what will the IBX's neighborhood-level impact look like, before the line is built?
+**Feature engineering** -- I added `pct_2plus_cars` from ACS table B25044 as a car-ownership predictor, and restored a vehicle availability chunk that got lost in a merge conflict.
 
-Traditional before-and-after studies require waiting years for infrastructure to open. This project builds a what-if tool instead. We train predictive models on existing census, transit, and mobility data across all of New York City, where we already know how transit access and commute patterns relate to each other, then simulate what happens when you add transit access to the IBX corridor.
+**Portfolio revisions** -- After receiving professor feedback, I created this portfolio branch and made the following improvements:
+- Fixed a data bug in `pct_no_car` (was dividing household counts by population instead of by total households)
+- Added an explicit treatment definition for the BART causal section
+- Added IBX site-specific treatment effect reporting
+- Added a paragraph explaining how spatial lags are constructed (queen contiguity, row-standardized weights)
+- Added partial dependence plots for the top RF features to show direction of effect
+- Fixed propensity score diagnostics to exclude the treatment mechanism (`dist_subway_miles`)
+- Switched BART ITE maps from a diverging palette to a sequential one
+- Added quantile capping for outlier-heavy color scales (uber trips, bike access)
+- General cleanup of typos and internal dev notes
 
----
-
-## What We Built
-
-An interactive Shiny app for transit planners and policy staff who want to explore IBX impact by neighborhood without touching any R code. Users can explore:
-
-- **IBX Simulation:** estimated drop in 60-minute-plus commute share by census tract, across six model variants
-- **Demographic layers:** income, poverty rate, population density, and distance to Manhattan
-- **RF Residuals map:** where the model over- and under-predicts, as a diagnostic layer
-- **BART Treatment Effect map:** causal estimates of IBX impact for treated tracts only
-
----
-
-## Data Sources
-
-| Source | Description |
-|--------|-------------|
-| 2022 ACS 5-Year Estimates | Census-tract demographics, commute mode, income, car ownership |
-| TLC Trip Records, Oct 2023 | Uber/Lyft and taxi trip counts by pickup zone |
-| Citi Bike Trip Data, Oct 2023 | Station-level trip counts and station density |
-| MTA IBX SEQRA Scoping Document, 2025 | Proposed IBX station addresses, geocoded to coordinates |
-| MTA Subway Entrances and Exits, 2024 | Distance to nearest subway entrance per tract |
-
----
+**What my teammates built:** Catherine built the initial data pipeline, linear and spline models, distance-to-Manhattan feature, 10-fold CV framework, spatial lag features, and most of the Shiny app infrastructure. Guillermo built the BART/bartCause causal inference section.
 
 ## Models
 
-We built and compared six predictive model variants plus one causal model.
+We trained six predictive model variants (Linear, Linear + Spline, Random Forest, each with and without spatial lag features) and one causal model (BART via `bartCause`). 10-fold cross-validation picked Random Forest + Spatial Lags as the best performer. The IBX simulation sets each treated tract's distance-to-subway to the city-wide minimum and re-predicts commute outcomes.
 
-**Predictive models, each fit with and without spatial-lag features:**
-- Linear Regression with logit-transformed outcome
-- Linear + Natural Cubic Spline on subway distance
-- Random Forest (500 trees, mtry=7, 10-fold CV)
+## How to Run
 
-**Causal model:**
-- BART (Bayesian Additive Regression Trees), used to estimate the Average Treatment Effect for IBX-corridor tracts with propensity score overlap checks
+### Prerequisites
+- R 4.x with RStudio or Positron
+- Git LFS (the repo has large `.parquet` and `.rds` files)
+- A free Census API key from https://api.census.gov/data/key_signup.html
 
-### Key Finding
+### Setup
 
-Model choice matters a lot in a sensitivity analysis like this. The linear baseline predicts close to zero IBX relief, not because transit access is unrelated to long commutes, but because the relationship saturates in a way that a linear model cannot represent. The spline and Random Forest models both predict around **7 to 8 percentage points of relief** for directly served tracts. The spatial-lag variants extend measurable relief to roughly 113 neighboring tracts beyond the corridor itself.
+```bash
+git lfs install
+git lfs pull
+```
 
-| Model | CV RMSE |
-|-------|---------|
-| Linear | ~8.5 |
-| Linear + Spline | ~7.9 |
-| Random Forest | 7.24 |
-| **Random Forest + Spatial Lags** | **7.14** |
+In R:
+```r
+usethis::edit_r_environ()
+# Add: CENSUS_API_KEY=your_key_here
+# Restart R
+```
 
----
+### Run
+- Knit `DATA 622 - Project MVP V1.Rmd` to regenerate all models and outputs
+- Run `app.R` for the interactive Shiny map
 
-## Modeling Insights
+## Data Sources
+- **Census:** 2022 ACS 5-Year Estimates (demographics, commute modes, income, housing)
+- **TLC:** October 2023 yellow taxi, green taxi, and Uber/Lyft trip records
+- **Citi Bike:** October 2023 trip data
+- **MTA:** Subway Entrances and Exits 2024, IBX station locations from the SEQRA scoping document
 
-**The counterintuitive transit coefficient**
+## Project Structure
 
-The linear model finds that tracts where more workers commute by transit have *more* 60-minute-plus commutes, not fewer. This is not a causal finding. It is a geographic one. Tracts with high transit use tend to be in the outer boroughs, far from job centers, where commutes are long regardless of mode. Recognizing this kind of confounding and explaining it clearly matters as much as the model output itself.
-
-**Diagnosing spatial structure**
-
-Before adding `dist_to_manhattan_miles` as a feature, residuals clustered geographically, a sign the model was missing something spatial. Adding a single Manhattan proximity variable halved that clustering and improved RMSE across all three model types. The model had been using borough fixed effects to capture both borough location and Manhattan proximity at the same time. Making the two explicit and separate improved both fit and interpretability.
-
-**Who benefits most from IBX**
-
-The BART causal model goes beyond prediction to ask which neighborhoods would benefit most and why. Among treated tracts, the biggest estimated beneficiaries are in Queens, further from existing subway access, currently less transit-dependent, and surrounded by neighbors with higher station density. Queens treated tracts show an average treatment effect of around 0.46 percentage points of reduction in long-commute share. Brooklyn treated tracts benefit less, averaging around 0.09 percentage points. The BART magnitudes are smaller than the predictive simulation because BART applies Bayesian shrinkage toward zero and estimates a true causal effect rather than a max-relief scenario.
-
----
-
-## IBX Simulation
-
-For each of the 19 proposed IBX stations, we draw a 0.5-mile walkshed buffer around each station (about a 10-minute walk, the standard threshold for transit planning), then flag every census tract that intersects with any of those buffers as treated. The simulation sets `dist_subway_miles` to the best observed value in the dataset for treated tracts, then computes the difference between the baseline prediction and the IBX prediction.
-
-Our best model predicts measurable relief for tracts holding close to **1 million NYC residents**, around 11% of the city's population.
-
----
-
-## Limitations
-
-The simulation overstates benefits for tracts that already have decent transit access, since it sets subway distance to the best value in the dataset for all treated tracts regardless of their starting point. The target variable only covers workers who commute to work, missing non-work trips, remote workers, and people who may have already chosen shorter-commute jobs to work around transit gaps. The model is trained on a single snapshot of data and cannot account for how patterns might shift over time. Some IBX-corridor tracts also have no good comparison group in the data, meaning the BART model has to extrapolate for them rather than match them to similar untreated tracts.
-
----
-
-## Stack
-
-R throughout. Key packages: tidycensus, sf, tigris, spdep for spatial work; arrow for the TLC parquet files; randomForest and splines for modeling; rsample for cross-validation; tidygeocoder for geocoding IBX station addresses; r5r and osmextract for multimodal routing exploration; and Shiny for the app.
-
----
-
-## Setup
-
-See the setup instructions in this repo for Git LFS and Census API key configuration, required to pull the large spatial and parquet files.
-
----
-
-## Future Directions
-
-- Validate against the Second Avenue Q extension as a natural experiment
-- Full GTFS-based routing simulation for origin-destination pair estimates (r5r was explored during development; a complete routing implementation is a natural next step)
-- Incorporate bus network coverage and job accessibility features
-- K-fold cross-validation on the BART model
-- Causal forest for heterogeneous treatment effect estimation by neighborhood
+```
+DATA 622 - Project MVP V1.Rmd   # Main analysis (knit to reproduce everything)
+app.R                            # Shiny app for interactive map
+data/                            # Saved RDS model outputs (generated by knit)
+citibike/                        # October 2023 Citi Bike trip CSVs
+taxi_zones/                      # TLC taxi zone shapefiles
+dev-notes.md                     # Archived development notes from group project
+```
