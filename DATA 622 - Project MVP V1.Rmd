@@ -1441,9 +1441,14 @@ p=`r round(lm_results$p.value[lm_results$term == "dist_subway_miles"], 2)`). Thi
 
 The importance chart above tells us *how much* each feature matters for prediction, but not *which direction* it pushes or what shape the relationship is. Partial dependence plots fill that gap. They show the marginal effect of each top feature on predicted long-commute share, averaging over everything else.
 
-```{r rf-partial-dependence, fig.height=8, fig.width=10}
+```{r rf-partial-dependence, fig.height=8, fig.width=10, error=TRUE}
 # Partial dependence for top 6 features -- shows direction and shape
-top_6 <- rf_importance$Feature[1:6]
+# Filter to numeric features only (partialPlot can't handle factors like borough)
+cat("model_data cols:", paste(names(model_data), collapse=", "), "\n")
+cat("rf_importance top 10:", paste(head(rf_importance$Feature, 10), collapse=", "), "\n")
+numeric_feats <- rf_importance$Feature[rf_importance$Feature %in% 
+  names(model_data)[sapply(model_data, is.numeric) & names(model_data) != "pct_commute_60p"]]
+top_6 <- head(numeric_feats, 6)
 
 par(mfrow = c(2, 3), mar = c(4, 4, 2, 1))
 for (feat in top_6) {
