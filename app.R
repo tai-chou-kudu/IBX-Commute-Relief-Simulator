@@ -37,11 +37,6 @@ ui <- fluidPage(
                       "All Tracts (extrapolated outside corridor)" = "bart_ite",
                       "IBX Corridor Only"                          = "bart_ite_treated_only"
                     ),
-                    "📈 IBX Predictive Simulation (Linear)" = c(
-                      "Predicted 60m+ Commutes (Current)" = "predicted_commute_baseline",
-                      "Predicted 60m+ Commutes (With IBX)" = "predicted_commute_ibx",
-                      "Drop in Long-Commute Share (pp)"  = "ibx_commute_relief"
-                    ),
                     "〰️ IBX Predictive Simulation (Spline)" = c(
                       "Spline: Predicted 60m+ Commutes (Current)"  = "predicted_commute_baseline_spline",
                       "Spline: Predicted 60m+ Commutes (With IBX)" = "predicted_commute_ibx_spline",
