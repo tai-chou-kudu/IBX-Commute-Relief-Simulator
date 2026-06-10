@@ -34,7 +34,23 @@ This was a three-person group project. Here is what I built:
 
 ## Models
 
-We trained six predictive model variants (Linear, Linear + Spline, Random Forest, each with and without spatial lag features) and one causal model (BART via `bartCause`). 10-fold cross-validation picked Random Forest + Spatial Lags as the best performer. The IBX simulation sets each treated tract's distance-to-subway to the city-wide minimum and re-predicts commute outcomes.
+## Models
+
+We trained six predictive model variants (Linear, Linear + Spline, Random Forest, each 
+with and without spatial lag features) and one causal model (BART via `bartCause`). 
+10-fold cross-validation picked Random Forest + Spatial Lags as the best performer.
+
+One finding worth noting: after correcting the `pct_no_car` denominator bug (see My 
+Contributions above), the linear model produces zero predicted IBX relief. This is the 
+correct result -- `dist_subway_miles` was never significant in the fully-specified linear 
+model (p=0.62), and the data fix removed the artificial variance that had been masking 
+this. The spline and RF models are robust to this because they capture the nonlinear 
+distance-to-subway relationship the linear model cannot. This is one reason RF + spatial 
+lags was the right model choice for the IBX simulation.
+
+The IBX simulation sets each treated tract's distance-to-subway to the city-wide minimum 
+z-score and re-predicts commute outcomes. Spatial lag variants also recompute the 
+neighbor-averaged distance feature so spillover effects propagate to adjacent tracts.
 
 ## How to Run
 
