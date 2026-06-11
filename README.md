@@ -7,7 +7,7 @@ Originally developed with Catherine Dube and Guillermo Schneider.
 
 This project estimates how the proposed [Interborough Express (IBX)](https://new.mta.info/project/interborough-express) subway line would change commute times for the Brooklyn and Queens neighborhoods it would serve. We combine Census demographics, TLC taxi/rideshare data, Citi Bike trip data, and MTA subway station locations to build predictive and causal models of long commutes (60+ minutes) at the census tract level across NYC.
 
-The core question: if you drop a new subway line into underserved parts of Brooklyn and Queens, how much does it actually move the needle on commute times?
+The core question: if you drop a new subway line into underserved parts of Brooklyn and Queens, how much does it actually impact commute times?
 
 
 ## My Contributions
