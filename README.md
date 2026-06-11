@@ -1,6 +1,6 @@
 # Modeling the Impact of the Interborough Express on NYC Commute Times
 
-**Tai Chou-Kudu** | DATA 622, Winter 2026
+**Tai Chou-Kudu** | DATA 622, Spring 2026
 Originally developed with Catherine Dube and Guillermo Schneider.
 
 ## What This Project Does
