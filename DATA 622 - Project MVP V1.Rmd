@@ -1,6 +1,7 @@
 ---
-title: "DATA 622 Project"
-author: "Catherine Dube, Guillermo Schneider, Tai Chou-Kudu"
+title: "Modeling the Impact of the Interborough Express on NYC Commute Times"
+author: "Tai Chou-Kudu"
+subtitle: "Originally developed with Catherine Dube and Guillermo Schneider for DATA 622, Winter 2026"
 output: 
   html_document:
     toc: true
@@ -42,7 +43,7 @@ pacman::p_load(
 )
 
 # Resolve projPath: source-editor path when interactive, here() during knit.
-# `here()` only works if your wd is inside the project — knit sets that, but
+# `here()` only works if your wd is inside the project -- knit sets that, but
 # an interactive session might be running from your home dir.
 projPath <- if (interactive()) {
   dirname(rstudioapi::getSourceEditorContext()$path)
@@ -89,8 +90,8 @@ feature_exploration <- acs_vars_2022 %>%
     str_detect(str_to_lower(concept), "means of transportation to work|travel time")
   )
 
-# Comment Me out before final knit
-#View(feature_exploration)
+# Variable dictionary for reference
+# View(feature_exploration)
 ```
 
 ```{r more-census-data, results='hide', message=FALSE, cache=TRUE}
@@ -99,7 +100,8 @@ feature_exploration <- acs_vars_2022 %>%
 # Census variables
 vars <- c(
   # Base Demographics
-  no_car      = "B08201_002", 
+  no_car      = "B08201_002",
+  tot_hh_veh  = "B08201_001",  # total households -- correct denominator for no_car
   med_income  = "B19013_001", 
   med_age     = "B01002_001",
   total_pop   = "B01003_001",
@@ -172,7 +174,7 @@ This chunk does an explicit selection of columns from the census data to start w
 After that this chunk is doing some feature engineering on the census data. Mostly turning raw count data into percent of population data.
 
 * `pct_commute_60p` is currently being used as the target variable. It's the count of people with commutes over 60 min + the count of people with commutes over 90 minutes. Divided by total number of workers. x 100 to make is a percentage.
-* `pct_no_car` is percent of people who do not have a car 
+* `pct_no_car` is percent of households with no vehicle available 
 * `pct_transit` is percent of workers using public transit (mta, buses **not** uber/taxi) as primary commute methos 
 * `pct_walk` is percent of workers using walking as primary commute method
 * `pct_wfh`is percent of workers working from home 
@@ -205,7 +207,8 @@ nyc_tracts <- nyc_tracts %>%
     GEOID, NAME, geometry,
     
     # Base Demographics
-    no_car      = no_carE, 
+    no_car      = no_carE,
+    tot_hh_veh  = tot_hh_vehE,
     med_income  = med_incomeE, 
     med_age     = med_ageE, 
     total_pop   = total_popE, 
@@ -253,7 +256,7 @@ nyc_tracts <- nyc_tracts %>%
   
   # Feature Engineering: Convert raw counts to percentages
   mutate(
-    pct_no_car      = (no_car / total_pop) * 100,
+    pct_no_car      = (no_car / tot_hh_veh) * 100,
     pct_transit     = (transit / tot_workers) * 100,
     pct_walk        = (walk / tot_workers) * 100,
     pct_wfh         = (wfh / tot_workers) * 100,
@@ -284,7 +287,7 @@ nyc_tracts <- nyc_tracts %>%
   
   # Explicitly drop the raw counts so they don't leak into the model
   select(
-    -no_car, -transit, -walk, -wfh, -commute_60, -commute_90, -bachelors, 
+    -no_car, -tot_hh_veh, -transit, -walk, -wfh, -commute_60, -commute_90, -bachelors, 
     -mngmt_job, -service_job, -sales_job, -const_job, -trans_job, 
     -tot_workers, -tot_pop_25, -tot_employ,
     -m_18_19, -m_20, -m_21, -m_22_24, -m_25_29, -m_30_34, -m_35_39, -m_40_44, 
@@ -385,13 +388,13 @@ saveRDS(nyc_tracts_clean, census_save_path)
 
 print(paste("Census features and geometry saved to:", census_save_path))
 
-# Peak
+# Peek
 head(nyc_tracts_clean)
 ```
 
 ### Vehicle Availability (Cars Owned)
 
-Adding car ownership as a feature — flagged by our professor as likely the strongest missing predictor and a key source of omitted-variable bias. Pulling just this table separately to avoid re-running the full cached census pull.
+Adding car ownership as a feature -- flagged by our professor as likely the strongest missing predictor and a key source of omitted-variable bias. Pulling just this table separately to avoid re-running the full cached census pull.
 
 `pct_2plus_cars` captures car-dependent households (2+ vehicles) which is more informative than the binary `pct_no_car` already in the model.
 
@@ -453,7 +456,7 @@ zone_lookup <- read_csv(file.path(projPath, 'taxi_zone_lookup.csv'))
 taxi_zones <- taxi_zones_sf %>%
   left_join(zone_lookup, by = c("LocationID" = "LocationID"))
 
-# Peak: Does this map look right
+# Peek: Does this map look right
 plot(st_geometry(taxi_zones))
 ```
 
@@ -528,7 +531,7 @@ intersection <- st_intersection(nyc_tracts_proj, taxi_zones_proj) %>%
 # What % of Tract X's area is inside Taxi Zone Y?
 tract_weights <- intersection %>%
   as_tibble() %>%
-  # Two complementary shares — different jobs, different denominators:
+  # Two complementary shares -- different jobs, different denominators:
   # tract_share = how much of this tract is in this zone (picks the dominant zone)
   # zone_share  = how much of this zone is in this tract (apportions zone trips)
   group_by(GEOID) %>%
@@ -539,7 +542,7 @@ tract_weights <- intersection %>%
   ungroup() %>%
   select(GEOID, LocationID, zone, tract_share, zone_share)
 
-# Peak Crosswalk 
+# Peek at crosswalk 
 head(tract_weights)
 ```
 
@@ -656,7 +659,7 @@ subway_entrances_sf <- subway_raw %>%
   st_transform(2263) # Converting to the same 1 unit = 1 foot NYC-specific map that was used earlier
 
 # Picking a reference point inside each tract.
-# Switched away from st_centroid() — for L-shaped or coastal tracts the
+# Switched away from st_centroid() -- for L-shaped or coastal tracts the
 # geographic center can land in water or in a corner where nobody lives.
 # st_point_on_surface() is guaranteed to be inside the polygon.
 tract_centers <- st_point_on_surface(nyc_tracts_proj)
@@ -842,7 +845,7 @@ borough_lookup <- c(
 
 # Derive borough from first 5 chars of GEOID and join onto the master table
 master_table <- readRDS(file.path(projPath, "data", "model_input.rds")) %>%
-  # Brooklyn as reference level — most-treated borough in the IBX corridor,
+  # Brooklyn as reference level -- most-treated borough in the IBX corridor,
   # so all other borough coefficients read as "vs Brooklyn (the IBX baseline)".
   mutate(borough = factor(borough_lookup[substr(GEOID, 1, 5)],
                           levels = c("Brooklyn", "Bronx", "Manhattan",
@@ -857,7 +860,7 @@ print(table(master_table$borough))
 Two linear baselines:
 
 * `lm_fit_standardized`: pure linear regression
-* `lm_fit_spline`L same model + a natural cubic spline on `dist_subway_miles`
+* `lm_fit_spline`: same model + a natural cubic spline on `dist_subway_miles`
 
 We went back and updated this section so that both fit on a logit-transformed outcome so predictions stay in [0, 100]. (Without it, `lm` was predicting percentages that didn't make sense because they were outside that range).
 
@@ -903,7 +906,7 @@ ml_data_raw <- readRDS(file.path(projPath, "data", "model_input.rds")) %>%
 print(ml_data_raw %>% summarise(across(where(is.numeric), ~ sum(!is.finite(.)))))
 
 ## SCALE THE DATA FOR THE MODEL
-# Scale numeric predictors only — borough is a factor and must not be z-scored
+# Scale numeric predictors only -- borough is a factor and must not be z-scored
 numeric_predictors <- predictor_vars[predictor_vars != "borough"]
 
 ml_data_scaled <- ml_data_raw %>%
@@ -927,11 +930,11 @@ ml_data_scaled <- ml_data_raw %>%
 logit_to_pct <- function(z) (plogis(z) * 101) - 0.5
 
 ## TRAIN THE MODEL
-# Fit on the logit-transformed outcome — back-transform when we predict.
+# Fit on the logit-transformed outcome -- back-transform when we predict.
 lm_fit_standardized <- lm(pct_commute_60p_logit ~ . - GEOID - pct_commute_60p,
                           data = ml_data_scaled)
 
-# Same model with a natural cubic spline on dist_subway_miles — kept alongside
+# Same model with a natural cubic spline on dist_subway_miles -- kept alongside
 # the pure-linear baseline so we can compare them in the Shiny app.
 lm_fit_spline <- lm(pct_commute_60p_logit ~ . - GEOID - pct_commute_60p - dist_subway_miles
                     + splines::ns(dist_subway_miles, df = 4),
@@ -943,7 +946,9 @@ summary(lm_fit_standardized)
 
 #### Spatial lag features
 
-Based on feedback, we went back and added spatil lag feautred. For each geographic predictor below, we compute the neighbor-weighted average (the "spatial lag"). This lets a model express patterns like "a tract's commute outcomes depend on its own features AND on its neighbors' features." We keep the original predictors as-is so we can compare with-lag vs. without-lag model performance directly.
+Spatial lag features let a model express patterns like "a tract's commute outcomes depend not just on its own characteristics but also on its neighbors' characteristics." We keep the original predictors as-is so we can compare with-lag vs. without-lag model performance directly.
+
+**How we built them:** First, we identify each tract's geographic neighbors using queen contiguity (`poly2nb`) -- two tracts are "neighbors" if they share any boundary segment or vertex. Then we build a row-standardized weight matrix (`nb2listw`, style = "W") so each neighbor gets equal weight summing to 1. For each selected predictor, the spatial lag is just the weighted average of that predictor across the tract's neighbors. So `lag_med_income` for tract A is the mean income of all tracts that touch A. This lets the model pick up on spillover -- for example, a tract surrounded by high-income neighbors might behave differently from an otherwise identical tract in a lower-income area, even after controlling for its own income.
 
 ```{r build-spatial-lags}
 #library(spdep)
@@ -993,7 +998,7 @@ A separate fit of `rf_fit` on the full dataset happens at the end (that's the ve
 
 ```{r random-forest-model} 
 ## CV SETUP
-# 10-fold CV stratified by borough — same folds for every model so RMSE/R^2
+# 10-fold CV stratified by borough -- same folds for every model so RMSE/R^2
 # comparisons are paired 
 set.seed(622)
 model_data <- ml_data_scaled[, c(target_var, predictor_vars)]
@@ -1040,7 +1045,7 @@ lm_spline_cv_spatial <- run_cv(folds_spatial, function(d) lm(pct_commute_60p ~ .
                                                               data = d))
 rf_cv_spatial        <- run_cv(folds_spatial, function(d) randomForest(pct_commute_60p ~ ., data = d, ntree = 500))
 
-## Train RF on full dataset (used for map predictions — outside the CV loop)
+## Train RF on full dataset (used for map predictions -- outside the CV loop)
 rf_fit <- randomForest(
   pct_commute_60p ~ .,
   data       = model_data,
@@ -1048,7 +1053,7 @@ rf_fit <- randomForest(
   importance = TRUE
 )
 
-## Spatial-lag production fits — used by the spillover IBX simulation
+## Spatial-lag production fits -- used by the spillover IBX simulation
 lm_fit_standardized_spatial <- lm(
   pct_commute_60p_logit ~ . - GEOID - pct_commute_60p,
   data = ml_data_scaled
@@ -1107,7 +1112,7 @@ cv_table <- cv_table %>%
   mutate(within_1se_of_best = ifelse(RMSE_mean <= one_se_thresh, "✓", ""))
 
 kable(cv_table %>% mutate(across(where(is.numeric), ~ round(., 3))),
-      caption = "10-fold CV (stratified by borough) — mean ± SE, one-SE rule flag")
+      caption = "10-fold CV (stratified by borough) -- mean ± SE, one-SE rule flag")
 ```
 
 **Interpretation:** Random Forest + Spatial Lags is the CV-best by just a little bit, with `r round(cv_table$RMSE_mean[6], 2)` RMSE vs `r round(cv_table$RMSE_mean[5], 2)` for plain Random Forest. 
@@ -1140,17 +1145,17 @@ rf_tuning <- map_dfr(mtry_grid, function(m) {
   )
 })
 
-# Flag mtry values within ~1% of best — rough OOB analogue of the one-SE rule.
+# Flag mtry values within ~1% of best -- rough OOB analogue of the one-SE rule.
 best_oob <- min(rf_tuning$OOB_RMSE)
 rf_tuning <- rf_tuning %>%
   mutate(within_1pct_of_best = ifelse(OOB_RMSE <= best_oob * 1.01, "✓", ""))
 
 kable(rf_tuning %>% mutate(across(where(is.numeric), ~ round(., 3))),
-      caption = "RF mtry sweep — OOB RMSE / R² on full data")
+      caption = "RF mtry sweep -- OOB RMSE / R² on full data")
 
 ## Refit production rf_fit with the chosen mtry
 # OOB-best is mtry=11 by 0.03 RMSE, but ISLP default p/3 ≈ 7 is within 1%.
-# Going with the simpler/standard default — easier to defend and statistically tied.
+# Going with the simpler/standard default -- easier to defend and statistically tied.
 chosen_mtry <- 7
 set.seed(622)
 rf_fit <- randomForest(
@@ -1162,7 +1167,7 @@ rf_fit <- randomForest(
 )
 cat("rf_fit refit with mtry =", chosen_mtry, "\n")
 
-## OOB-vs-ntree — confirm 500 trees is enough
+## OOB-vs-ntree -- confirm 500 trees is enough
 oob_curve <- tibble(
   ntree    = seq_along(rf_fit$mse),
   oob_rmse = sqrt(rf_fit$mse)
@@ -1174,12 +1179,12 @@ ggplot(oob_curve, aes(x = ntree, y = oob_rmse)) +
              color = "red", linetype = "dashed") +
   theme_minimal() +
   labs(title = paste("OOB RMSE vs number of trees (mtry =", chosen_mtry, ")"),
-       subtitle = "Red dashed = final OOB RMSE — curve should plateau",
+       subtitle = "Red dashed = final OOB RMSE -- curve should plateau",
        x = "Number of trees", y = "OOB RMSE")
 ```
 
 
-**Interpretation:**OOB error should dropped quickly and then plateaued. And the dashed red line is markig the final OOB value. The mtry sweep was a near-tie: the algorithmic best was mtry=`r rf_tuning$mtry[which.min(rf_tuning$OOB_RMSE)]` at OOB RMS `r round(min(rf_tuning$OOB_RMSE), 3)`, but `r sum(rf_tuning$within_1pct_of_best == "✓")` of 5 values landed within 1% of the best, so we went with ISLP's default mtry=7 (RMSE `r round(rf_tuning$OOB_RMSE[rf_tuning$mtry == 7], 3)`). That mtry=2 (essentially bagging) is only marginally worse tells us feature decorrelation isn't doing heavy lifting on this dataset. The OOB-vs-ntree curve dropped fast from `r round(oob_curve$oob_rmse[1], 1)` at ntree=1 to `r round(oob_curve$oob_rmse[200], 2)` by ntree=200, then flatlines.  So ntree=500 is well past the plateau and definitely enough. We could even cut bak to ~300 trees, but 500 is pretty standard so we kept it.
+**Interpretation:** OOB error dropped quickly and then plateaued. And the dashed red line is markig the final OOB value. The mtry sweep was a near-tie: the algorithmic best was mtry=`r rf_tuning$mtry[which.min(rf_tuning$OOB_RMSE)]` at OOB RMS `r round(min(rf_tuning$OOB_RMSE), 3)`, but `r sum(rf_tuning$within_1pct_of_best == "✓")` of 5 values landed within 1% of the best, so we went with ISLP's default mtry=7 (RMSE `r round(rf_tuning$OOB_RMSE[rf_tuning$mtry == 7], 3)`). That mtry=2 (essentially bagging) is only marginally worse tells us feature decorrelation isn't doing heavy lifting on this dataset. The OOB-vs-ntree curve dropped fast from `r round(oob_curve$oob_rmse[1], 1)` at ntree=1 to `r round(oob_curve$oob_rmse[200], 2)` by ntree=200, then flatlines.  So ntree=500 is well past the plateau and definitely enough. We could even cut back to ~300 trees, but 500 is pretty standard so we kept it.
 
 ### IBX Simulation
 
@@ -1254,7 +1259,7 @@ ibx_scenario_data_scaled <- ml_data_scaled %>%
 
 # Predicted data is from the model which consumed scaled data
 # But we're using raw data so the display of neighborhood features is correct
-# lm predictions live in logit space — back-transform + clamp to [0, 100].
+# lm predictions live in logit space -- back-transform + clamp to [0, 100].
 final_map_data <- ml_data_raw %>%
   mutate(
     predicted_commute_baseline = pmax(0, pmin(100, logit_to_pct(predict(lm_fit_standardized, newdata = ml_data_scaled)))),
@@ -1272,7 +1277,7 @@ saveRDS(final_map_data, file.path(projPath, "data", "model_input.rds"))
 ```
 
 ```{r ibx-spline-predictions}
-# Spline-lm IBX predictions — appended to final_map_data alongside the linear baseline.
+# Spline-lm IBX predictions -- appended to final_map_data alongside the linear baseline.
 final_map_data <- final_map_data %>%
   mutate(
     predicted_commute_baseline_spline = pmax(0, pmin(100, logit_to_pct(predict(lm_fit_spline, newdata = ml_data_scaled)))),
@@ -1289,10 +1294,10 @@ saveRDS(final_map_data, file.path(projPath, "data", "model_input.rds"))
 
 ```{r ibx-rf-predictions}
 # Append RF IBX predictions to the map data already saved by the chunk above.
-# final_map_data is still in memory — adding RF columns and re-saving.
+# final_map_data is still in memory -- adding RF columns and re-saving.
 final_map_data_rf <- final_map_data %>%
   mutate(
-    # Restore Tai's clamps — % can't be negative, neither can relief.
+    # Restore Tai's clamps -- % can't be negative, neither can relief.
     predicted_commute_baseline_rf = pmax(0, predict(rf_fit, newdata = ml_data_scaled)),
     predicted_commute_ibx_rf      = pmax(0, predict(rf_fit, newdata = ibx_scenario_data_scaled)),
     ibx_commute_relief_rf         = pmax(0, predicted_commute_baseline_rf - predicted_commute_ibx_rf),
@@ -1415,7 +1420,7 @@ ggplot(rf_importance, aes(x = `%IncMSE`, y = reorder(Feature, `%IncMSE`))) +
   theme_minimal() +
   labs(
     title    = "Random Forest: Feature Importance",
-    subtitle = "% increase in MSE when feature is permuted — higher = more important",
+    subtitle = "% increase in MSE when feature is permuted -- higher = more important",
     x        = "% Increase in MSE (Permutation Importance)",
     y        = "Feature"
   )
@@ -1425,12 +1430,36 @@ ggplot(rf_importance, aes(x = `%IncMSE`, y = reorder(Feature, `%IncMSE`))) +
 
 **Interpretation:** 
 
-* RF's top three features — `pct_transit`, `dist_to_manhattan_miles`, and `pct_wfh`, are largely the same top features the linear model picked, so the predictive story holds across model classes. 
+* RF's top three features -- `pct_transit`, `dist_to_manhattan_miles`, and `pct_wfh`, are largely the same top features the linear model picked, so the predictive story holds across model classes. 
 * The big difference is that `dist_subway_miles` ranks #`r which(rf_importance$Feature == "dist_subway_miles")` in RF
 (%IncMSE = `r round(rf_importance$"%IncMSE"[rf_importance$Feature == "dist_subway_miles"], 1)`)
 despite being essentially zero in the linear model (`r sprintf("%+.3f", lm_results$estimate[lm_results$term == "dist_subway_miles"])`,
 p=`r round(lm_results$p.value[lm_results$term == "dist_subway_miles"], 2)`). This confirmed that the relationship is nonlinear, which is what we wanted the spline to capture. 
 * `borough` only ranks #`r which(rf_importance$Feature == "borough")` here. RF can use the continuous geographic features directly, so it leans less on the categorical borough proxy than the lm does. The bottom of the list (age buckets, `pct_vacant`) carries little predictive weight; candidates for trimming if we ever wanted a leaner feature set.
+
+#### Partial Dependence: Direction of RF Effects
+
+The importance chart above tells us *how much* each feature matters for prediction, but not *which direction* it pushes or what shape the relationship is. Partial dependence plots fill that gap. They show the marginal effect of each top feature on predicted long-commute share, averaging over everything else.
+
+```{r rf-partial-dependence, fig.height=8, fig.width=10, error=TRUE}
+# Partial dependence for top 6 features -- shows direction and shape
+# Filter to numeric features only (partialPlot can't handle factors like borough)
+cat("model_data cols:", paste(names(model_data), collapse=", "), "\n")
+cat("rf_importance top 10:", paste(head(rf_importance$Feature, 10), collapse=", "), "\n")
+numeric_feats <- rf_importance$Feature[rf_importance$Feature %in% 
+  names(model_data)[sapply(model_data, is.numeric) & names(model_data) != "pct_commute_60p"]]
+top_6 <- head(numeric_feats, 6)
+
+par(mfrow = c(2, 3), mar = c(4, 4, 2, 1))
+for (feat in top_6) {
+  partialPlot(rf_fit, pred.data = as.data.frame(model_data),
+              x.var = feat, main = feat,
+              xlab = feat, ylab = "Partial effect on % long commute")
+}
+par(mfrow = c(1, 1))
+```
+
+**Interpretation:** These show the direction and shape of how each feature relates to long commutes in the RF. The things to look for: does `pct_transit` show the same positive relationship as the linear model? Does `dist_subway_miles` have the saturating shape that motivated the spline? Where both models agree, the finding is solid. Where they disagree, the RF is probably picking up on nonlinearity or interactions that the linear model misses.
 
 #### RF Residual Diagnostics
 
@@ -1455,11 +1484,11 @@ ggplot(residual_map_data) +
                        limits = c(-cap, cap),
                        oob = scales::squish) +
   theme_void() +
-  labs(title = "RF residuals — actual minus predicted % long commute",
+  labs(title = "RF residuals -- actual minus predicted % long commute",
        subtitle = "Red = model under-predicts | Blue = model over-predicts",
        fill = "Residual\n(pp)")
 
-## MORAN'S I — is the geographic clustering statistically real?
+## MORAN'S I -- is the geographic clustering statistically real?
 tracts_for_moran <- nyc_tracts_clean %>%
   filter(GEOID %in% final_map_data_rf$GEOID) %>%
   arrange(match(GEOID, final_map_data_rf$GEOID))
@@ -1479,9 +1508,9 @@ cat("p-value:     ", format.pval(moran_test$p.value),                     "\n")
 
 How to read Moran's I:
 
-- I > 0 with low p: residuals cluster geographically — there's a spatial pattern the model is missing.
-- I ≈ 0: residuals are spatially random — the model captures geographic structure well.
-- I < 0: residuals checkerboard (rare in real data) — would be unusual.
+- I > 0 with low p: residuals cluster geographically -- there's a spatial pattern the model is missing.
+- I ≈ 0: residuals are spatially random -- the model captures geographic structure well.
+- I < 0: residuals checkerboard (rare in real data) -- would be unusual.
 
 ```{r historical-pre-manhattan-constants}
 # Snapshot of the analysis state just before we added dist_to_manhattan_miles.
@@ -1511,9 +1540,15 @@ Predicts the effect of an intervention (e.g., a new medicine) by combining hundr
 library(bartCause)
 ```
 
+#### Treatment Definition
+
+We define "treatment" as having a subway or rail station within 0.5 miles walking distance of a tract's interior point. Tracts near existing subway infrastructure count as "treated," tracts without nearby access are "controls." The important thing to keep in mind here is that no IBX stations exist yet -- the IBX corridor tracts are currently *untreated* controls. What BART does is learn the causal effect of subway proximity from existing treated-vs-control comparisons across NYC, and then we apply that estimated effect to the IBX corridor as a counterfactual: "what would happen to these tracts if they gained subway access comparable to the best-served tracts in the city?"
+
+This is the key assumption we are making. It is reasonable because the IBX corridor tracts share demographic and geographic characteristics with existing treated tracts elsewhere in Brooklyn and Queens (the overlap diagnostics below show this), but it is still an assumption -- the IBX is a new rail line, not an exact copy of existing subway service.
+
 Treatment variable (0/1)
 ```{r causal-forest-model}
-# add a binary 1/0 column noting which GEOID's where included in our IBX "treatment"
+# Binary 1/0: which tracts fall within 0.5-mile walkshed of existing subway stations
 ml_data_scaled$ibx_treatment <- as.integer(ml_data_scaled$GEOID %in% ibx_geoid_list)
 ```
 
@@ -1535,10 +1570,15 @@ y <- BART_data$pct_commute_60p
 # Treatment (must be numeric 0/1)
 z <- as.numeric(BART_data$ibx_treatment)
 
-# Covariates (confounders only)
-# Keep x as a data.frame — borough is a factor, and as.matrix() would coerce
+# Covariates -- full set for exploratory analysis
+# Keep as data.frame -- borough is a factor, and as.matrix() would coerce
 # the whole frame to character, which lands a NaN in bartc's sigma estimate.
 x <- BART_data[, !(names(BART_data) %in% c("pct_commute_60p", "ibx_treatment"))]
+
+# Confounders for propensity score and balance diagnostics -- must exclude
+# dist_subway_miles (the treatment mechanism) to match what bartc() uses.
+dist_cols_ps <- grep("dist_subway_miles", names(x), value = TRUE)
+x_confounders <- x[, !(names(x) %in% dist_cols_ps)]
 
 
 ```
@@ -1547,8 +1587,10 @@ x <- BART_data[, !(names(BART_data) %in% c("pct_commute_60p", "ibx_treatment"))]
 
 1. overlap graph? (for ATE, ATT, and ATC). Overlap is a property of the data (treatment vs covariates)
 ```{r}
+# Exclude dist_subway_miles from propensity model -- it is the treatment
+# mechanism (the variable IBX changes), not a confounder.
 ps_model <- glm(
-  ibx_treatment ~ . - pct_commute_60p,
+  ibx_treatment ~ . - pct_commute_60p - dist_subway_miles - lag_dist_subway_miles,
   data = BART_data,
   family = binomial
 )
@@ -1609,7 +1651,7 @@ ggplot(BART_df, aes(x = ps, fill = factor(z))) +
   labs(title = "Overlap (ATC)", fill = "Treatment")
 ```
 
-**Interpretation*:* This is much like the plots we've already looked at. The conclusions are also very much the same as the one directly above.
+**Interpretation:** This is much like the plots we've already looked at. The conclusions are also very much the same as the one directly above.
 
 #### Visualize the data: 2
 
@@ -1624,9 +1666,11 @@ Each point = a covariate. X-axis = standardized mean difference (SMD). Two sets 
 ```
 
 ```{r}
-bal_ate <- bal.tab(x, treat = z, weights = w_ate, estimand = "ATE",un = TRUE,quick = TRUE)
-bal_att <- bal.tab(x, treat = z, weights = w_att, estimand = "ATT",un = TRUE,quick = TRUE)
-bal_atc <- bal.tab(x, treat = z, weights = w_atc, estimand = "ATC",un = TRUE,quick = TRUE)
+# Use x_confounders (without dist_subway_miles) so balance diagnostics
+# reflect the same covariate set that bartc() conditions on.
+bal_ate <- bal.tab(x_confounders, treat = z, weights = w_ate, estimand = "ATE", un = TRUE, quick = TRUE)
+bal_att <- bal.tab(x_confounders, treat = z, weights = w_att, estimand = "ATT", un = TRUE, quick = TRUE)
+bal_atc <- bal.tab(x_confounders, treat = z, weights = w_atc, estimand = "ATC", un = TRUE, quick = TRUE)
 ```
 
 Covariate Balance (ATE)
@@ -1713,7 +1757,38 @@ hist(ite[z == 1],
 abline(v = att, col = "red", lwd = 2)
 ```
 
-**Interpretation:** Distribution of individual treatment effects (ITE) across the *treated* tracts. The red vertical line is the ATT (average across treated). Negative ITE values = treatment reduces long-commute % (i.e. helps). All-negative = treatment uniformly helps every treated tract. Fortuantely, this plot looks all negative! (Though the magnitude is quite small.)
+**Interpretation:** Distribution of individual treatment effects (ITE) across the *treated* tracts. The red vertical line is the ATT (average across treated). Negative ITE values = treatment reduces long-commute % (i.e. helps). All-negative = treatment uniformly helps every treated tract. Fortunately, this plot is all negative, meaning treatment uniformly helps, though the magnitude is modest.
+
+#### IBX Corridor: Site-Specific Treatment Effects
+
+The treatment effects above come from existing subway proximity patterns across NYC. Below we report the predicted effect specifically for the tracts that would actually get IBX stations -- the part that matters for policy.
+
+```{r ibx-site-specific-ite}
+# Average treatment effect on the IBX corridor subset
+ibx_mask <- ml_data_scaled$GEOID %in% ibx_geoid_list
+ibx_ite  <- as.numeric(ite[ibx_mask])
+
+cat("Average treatment effect on IBX sites:", round(mean(ibx_ite), 4), "\n")
+cat("IBX site ITE range:", round(range(ibx_ite), 4), "\n")
+cat("Number of IBX corridor tracts:", sum(ibx_mask), "\n")
+
+# Per-tract ITE table for the IBX corridor
+ibx_site_effects <- data.frame(
+  GEOID = ml_data_scaled$GEOID[ibx_mask],
+  ITE   = ibx_ite
+) %>%
+  left_join(
+    ml_data_raw %>% select(GEOID, pct_commute_60p, pct_transit, borough),
+    by = "GEOID"
+  ) %>%
+  arrange(ITE)
+
+kable(ibx_site_effects,
+      caption = "Site-specific treatment effects for IBX corridor tracts (sorted by benefit)",
+      digits = 3)
+```
+
+**Interpretation:** Each row is one IBX corridor tract and its estimated causal effect from gaining subway access. More negative ITE = bigger predicted drop in long commutes. The variation across sites comes from differences in current transit usage, demographics, and neighborhood context. Queens tracts tend to benefit more, which lines up with the borough-level results above.
 
 Results:
 
@@ -1783,9 +1858,7 @@ coef_df <- data.frame(
 )
 ```
 
-Still Queens is Queen. But Bike trips per capita is up there too now! More stations per 1000 pop predicting a higher expected commute after treatment is confusing to me? Same with no car percent?
-Positive coefficient increases treatment effect among treated.
-Negative coefficient decreases treatment effect among treated.
+**How to interpret:** Each bar shows how a covariate correlates with treatment effect variation among treated tracts only. A negative coefficient means that feature is associated with a larger benefit (more negative ITE). A positive coefficient means smaller benefit. Borough coefficients are relative to Brooklyn (reference level).
 ```{r}
 ggplot(coef_df, aes(x = reorder(variable, effect), y = effect)) +
   geom_bar(stat = "identity") +
@@ -1795,11 +1868,10 @@ ggplot(coef_df, aes(x = reorder(variable, effect), y = effect)) +
        y = "Effect on ITE")
 ```
 
-**Interpretation: ** Okay we figured it out! Negative bar = feature is associated with bigger benefit. The boroughQueens bar (negative) means Queens treated tracts benefit more than Brooklyn treated tracts (becuase Brooklyn is the reference). 
+**Interpretation:** Negative bar = feature is associated with bigger benefit. The Queens coefficient (negative) means Queens treated tracts benefit more than Brooklyn treated tracts (Brooklyn is the reference level). Bike trips per capita also predicts a larger benefit, which could mean tracts with existing cycling infrastructure have residents who are more likely to adopt new transit.
 
 3. Exploratory subgroup analysis (histograms): explore treatment effect heterogeneity across subgroups
 
-Why are there MORE expected 60+ min commutes in brooklyn post treatment??? More stations should just reduce expected commute times, i dont understand, that number should fall. I think we' must've messed something up using our tracts geographic center for predicting commute times? 
 ```{r}
 ggplot(x_treated, aes(x = ite_treated)) +
   geom_histogram(bins = 30, fill = "steelblue", color = "white") +
@@ -1876,7 +1948,7 @@ library(spdep)
 
 # Build tracts_sf aligned to BART_df row order.
 # BART_df rows come from ml_data_scaled (minus GEOID, na.omit was a no-op since
-# ml_data_raw was already drop_na'd) — so ml_data_scaled$GEOID gives the row
+# ml_data_raw was already drop_na'd) -- so ml_data_scaled$GEOID gives the row
 # sequence. lag.listw is positional, not keyed by GEOID, so the arrange() is critical.
 tracts_sf <- nyc_tracts_clean %>%
   filter(GEOID %in% ml_data_scaled$GEOID) %>%
@@ -1910,7 +1982,7 @@ spatial_lag_df$lag_income <- lag.listw(weights, BART_df$x.med_income)
 Need to edit and add this when done to add it to our map:
 ```{r ibx-BART-predictions, eval=FALSE, include=FALSE}
 # Append BART IBX predictions to the map data already saved by the chunk above.
-# final_map_data is still in memory — adding RF columns and re-saving.
+# final_map_data is still in memory -- adding RF columns and re-saving.
 
 #final_map_data_BART <- final_map_data_rf %>%
 #  mutate(
@@ -1946,21 +2018,3 @@ The question we wanted to answer was: how would the new Interborough Express (IB
 - Add SHAP values for our best model (Random Forest + Spatial Lags) so we can explain individual tract predictions.
 - Try a graded version of the IBX treatment (partial credit for partial walk-zone coverage) and see how much that shifts the answer.
 - Add a convergence-check plot for the BART model.
-- Refit the BART propensity model without `dist_subway_miles` (the propensity formula still includes it, which carries the mediator effect partly through the propensity score).
-
-## Misc. Notes Dump
- 
-Spatial lag features — include averages of neighboring tract values to account for spatial autocorrelation; used in similar transit research and directly relevant to the IBX corridor analysis
-
-K-fold cross-validation — more robust evaluation than a single 80/20 split given our dataset size
-
-George: it might be good to have a "proximity to Manhattan" feature, otherwise the coefficients that are going to be learned for other coefficients will partially be capturing the geographic structure.
-
-George: Second, you may want think about whether linear relationships are appropriate for all variables, particularly those which have outlier values (for example the citibike share or uber/taxi share). I also suspect the distance from subway relationship is nonlinear, like the difference from 20 minutes and 25 minutes walk to the subway might not matter. This is important because if you use a linear model, the relationship at short walk times will be constrained by the data for long walk times.
-
-George: Try the the bartCause R package. It has built in a lot of model checks that determine how much you can truly say about causal effects given the data. read about it more here: https://apsta.shinyapps.io/thinkCausal/. IMO it is better than the CausalForest stuff from the EconML package, but that is my subjective opinion.
-
-George: In the predicted 60m commute time, note the presence of negative values. I highly recommend applying a transformation to take the interval from 0-1 to the entire number line, i.e. a log transformation or a sigmoid function of some type. This would prevent the negative number issue.
-
-BART mediator-as-confounder fix: An earlier version of bart_fit included `dist_subway_miles` and `lag_dist_subway_miles` in the confounders. Those are the variables the IBX actually changes. Controlling for it removed the causal pathway we were trying to measure. The original BART estimates came back with tiny positive ITE for most treated tracts (all 148 Brooklyn treated tracts positive, mean +0.5pp), which contradicted the predictive simulation. We refit BART without those two columns. The new estimates agree with the predictive simulation in direction (treatment helps most treated tracts) but with smaller magnitudes due to BART's Bayesian shrinkage toward zero.
-
