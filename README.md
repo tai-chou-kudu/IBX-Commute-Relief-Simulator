@@ -9,6 +9,9 @@ This project estimates how the proposed [Interborough Express (IBX)](https://new
 
 The core question: if you drop a new subway line into underserved parts of Brooklyn and Queens, how much does it actually move the needle on commute times?
 
+## Report
+Full write-up: [NYC IBX Commute Relief Estimator (PDF)](NYC_IBX_Commute_Relief_Estimator.pdf)
+
 ## My Contributions
 
 This was a three-person group project. Here is what I built:
