@@ -9,8 +9,6 @@ This project estimates how the proposed [Interborough Express (IBX)](https://new
 
 The core question: if you drop a new subway line into underserved parts of Brooklyn and Queens, how much does it actually move the needle on commute times?
 
-## Report
-Full write-up: [NYC IBX Commute Relief Estimator (PDF)](NYC_IBX_Commute_Relief_Estimator.pdf)
 
 ## My Contributions
 
@@ -35,7 +33,11 @@ This was a three-person group project. Here is what I built:
 
 **What my teammates built:** Catherine built the initial data pipeline, linear and spline models, distance-to-Manhattan feature, 10-fold CV framework, spatial lag features, and most of the Shiny app infrastructure. Guillermo built the BART/bartCause causal inference section.
 
-## Models
+## Report
+Full write-up: [NYC IBX Commute Relief Estimator (PDF)](NYC%20IBX%20Commute%20Relief%20Estimator.pdf)
+
+*Note: this report reflects the full group submission by Catherine Dube, Guillermo Schneider, and Tai Chou-Kudu. My individual contributions are described in the My Contributions section above.*
+
 
 ## Models
 
