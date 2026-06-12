@@ -3,6 +3,8 @@
 **Tai Chou-Kudu** | DATA 622, Spring 2026
 Originally developed with Catherine Dube and Guillermo Schneider.
 
+[Live Link to App](https://n6yc1z-tai0chou0kudu.shinyapps.io/nyc-ibx-portfolio/)
+
 ## What This Project Does
 
 This project estimates how the proposed [Interborough Express (IBX)](https://new.mta.info/project/interborough-express) subway line would change commute times for the Brooklyn and Queens neighborhoods it would serve. We combine Census demographics, TLC taxi/rideshare data, Citi Bike trip data, and MTA subway station locations to build predictive and causal models of long commutes (60+ minutes) at the census tract level across NYC.
