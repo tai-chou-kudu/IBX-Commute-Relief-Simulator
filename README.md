@@ -33,6 +33,10 @@ This was a three-person group project. Here is what I built:
 - Added quantile capping for outlier-heavy color scales (uber trips, bike access)
 - General cleanup of typos and internal dev notes
 
+**Authorship of the Report**
+- Authored the full report
+
+
 **What my teammates built:** Catherine built the initial data pipeline, linear and spline models, distance-to-Manhattan feature, 10-fold CV framework, spatial lag features, and most of the Shiny app infrastructure. Guillermo built the BART/bartCause causal inference section.
 
 ## Report
